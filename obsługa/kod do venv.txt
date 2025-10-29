@@ -1,0 +1,4 @@
+cd C:\Users\domek\Desktop\grafik-firmowy
+Set-ExecutionPolicy RemoteSigned -Scope Process
+venv\Scripts\activate
+pytest
