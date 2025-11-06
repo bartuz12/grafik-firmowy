@@ -1,9 +1,8 @@
 import os
 import logging
-# Usunięto 'RotatingFileHandler', ponieważ nie można pisać do plików w chmurze
 from flask import Flask, render_template, request, current_app
 from config import Config, TestConfig
-# --- POPRAWKA: Usunięto 'rq' z importu, aby wyłączyć Redisa ---
+# --- POPRAWKA: Usunięto 'rq' z tego importu ---
 from extensions import db, login_manager, mail, csrf, migrate
 from utils import nl2br_filter, inject_current_year, url_for_static_bust # Wszystkie funkcje pomocnicze
 from routes.auth import auth_bp
@@ -29,8 +28,10 @@ def create_app(config_class=Config):
     login_manager.init_app(app)
     mail.init_app(app)
     csrf.init_app(app)
-    # --- POPRAWKA: Wyłączono RQ/Redis ---
+    
+    # --- POPRAWKA: Całkowicie wyłączamy RQ (Redis) ---
     # rq.init_app(app)
+    
     migrate.init_app(app, db) # Potrzebne do migracji bazy danych
 
     # --- 2. REJESTRACJA FUNKCJI W JINJA ---
@@ -60,21 +61,18 @@ def create_app(config_class=Config):
         # Używamy db.session.get (nowa metoda) zamiast query.get
         return db.session.get(User, int(user_id))
 
-    # --- 5. POPRAWKA LOGOWANIA DLA CHMURY (Cloud Run / Render) ---
-    # Usunęliśmy logowanie do pliku, które powodowało awarię
-    # na systemie plików "tylko do odczytu".
-    # Zamiast tego, wysyłamy logi do stdout, a Google/Render je przechwyci.
+    # --- 5. LOGOWANIE (POPRAWKA DLA CLOUD RUN / RENDER) ---
+    # Ta sekcja zastępuje stare logowanie do pliku, które powodowało awarię.
     if not app.debug and not app.testing:
-        # Ustawiamy poziom logowania
+        # Używamy domyślnego loggera, który wysyła logi do stdout
+        # Google Cloud Run / Render automatycznie przechwyci te logi.
         app.logger.setLevel(logging.INFO)
-        # Ten log zobaczysz w panelu Google/Render po pomyślnym starcie
         app.logger.info('Grafik startup (Cloud Run / Render)')
 
     # --- 6. HANDLERY BŁĘDÓW (AUDYT 3.2) ---
     # Logowanie błędów 404 dla informacji
     @app.errorhandler(404)
     def not_found_error(error):
-        # Logowanie błędów 404 nadal działa i jest wysyłane do stdout
         app.logger.info(f"Strona nie znaleziona: {request.path} (404)")
         return render_template('404.html'), 404
 
@@ -82,13 +80,9 @@ def create_app(config_class=Config):
     @app.errorhandler(500)
     def internal_error(error):
         db.session.rollback() # Zawsze cofnij transakcję bazy danych
-        # Logowanie błędów 500 nadal działa i jest wysyłane do stdout
+        # Logujemy błąd do stdout, aby był widoczny w logach Cloud Run / Render
         app.logger.error(f"BŁĄD SERWERA 500: {error}")
         return render_template('500.html'), 500
 
     return app
-
-# --- KONIEC PLIKU ---
-# Usunięto blok 'if __name__ == "__main__":', ponieważ jest on
-# przeznaczony tylko do testów lokalnych. Serwer Gunicorn go nie używa.
 
