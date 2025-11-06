@@ -1,0 +1,24 @@
+# 🐍 Pliki cache Pythona
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 🗃️ Lokalne bazy danych
+*.db
+*.sqlite3
+instance/
+
+# 🔒 Pliki środowiskowe i sekrety
+.env
+.env.*
+
+# 🧠 Metadane edytora i Git
+.vscode/
+.git/
+.gitignore
+
+# ⚙️ Pliki konfiguracyjne i dokumentacja (niepotrzebne w kontenerze)
+Dockerfile
+README.md
+tests/

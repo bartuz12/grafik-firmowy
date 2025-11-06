@@ -1,12 +1,10 @@
-from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app # <-- Dodano import current_app
-# --- POPRAWKA ---
-# Dodano 'login_required' do importu, co naprawia błąd 'NameError'
+from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app
 from flask_login import login_user, logout_user, current_user, login_required
 from datetime import datetime
 
 # Importujemy obiekty z głównych plików aplikacji
-# --- POPRAWKA: Importujemy 'rq' z extensions ---
-from extensions import db, rq
+# --- POPRAWKA: Usunięto 'rq' z importu, ponieważ jest wyłączony ---
+from extensions import db
 from models import User
 from utils import send_email_in_background
 # Importujemy klasy formularzy z forms.py
@@ -24,9 +22,7 @@ def register():
 
     form = RegisterForm() # Używamy klasy formularza
 
-    # form.validate_on_submit() sprawdza zarówno metodę POST, jak i walidację + CSRF
     if form.validate_on_submit():
-        # Wszystkie dane są poprawne, pochodzą z form.data
         new_user = User(
             name=form.name.data,
             surname=form.surname.data,
@@ -43,17 +39,17 @@ def register():
             db.session.add(new_user)
             db.session.commit()
 
-            # --- POPRAWKA: Używamy rq.get_queue().enqueue ---
             try:
-                rq.get_queue().enqueue(
-                    send_email_in_background,
-                    new_user.email,
-                    'Witaj w Grafiku!',
-                    'email/welcome',
-                    user=new_user
-                )
+                # --- POPRAWKA: Cały blok RQ został wyłączony ---
+                # rq.get_queue().enqueue(
+                #    send_email_in_background,
+                #    new_user.email,
+                #    'Witaj w Grafiku!',
+                #    'email/welcome',
+                #    user=new_user
+                # )
+                pass # Tymczasowo pomijamy wysyłkę e-maila
             except Exception as e:
-                # Logowanie błędu kolejki, ale kontynuacja rejestracji
                 current_app.logger.error(f"Nie udało się zakolejkować e-maila powitalnego: {e}")
                 flash('Rejestracja pomyślna, ale wystąpił problem z wysyłką e-maila powitalnego.', 'warning')
                 return redirect(url_for('auth.login'))
@@ -62,12 +58,9 @@ def register():
             return redirect(url_for('auth.login'))
         except Exception as e:
             db.session.rollback()
-            # Logowanie błędu bazy danych
-            current_app.logger.error(f"Błąd bazy danych podczas rejestracji: {e}") # <-- Poprawiono NameError
+            current_app.logger.error(f"Błąd bazy danych podczas rejestracji: {e}")
             flash(f'Wystąpił błąd podczas rejestracji: {e}', 'error')
-            # Ponowne renderowanie formularza z błędami
 
-    # Gdy metoda GET lub walidacja nie powiedzie się
     return render_template('register.html', form=form)
 
 
@@ -76,13 +69,12 @@ def login():
     if current_user.is_authenticated:
         return redirect(url_for('main.dashboard'))
 
-    form = LoginForm() # Używamy klasy formularza
+    form = LoginForm()
 
     if form.validate_on_submit():
         user = User.query.filter_by(email=form.email.data).first()
 
         if not user or not user.check_password(form.password.data):
-            # Flash będzie wyświetlony po przekierowaniu, ale musimy użyć redirect dla Flask-WTF
             flash('Nieprawidłowy e-mail lub hasło.', 'error')
             return redirect(url_for('auth.login'))
 
@@ -90,8 +82,7 @@ def login():
             flash('Twoje konto jest zablokowane. Skontaktuj się z administratorem.', 'error')
             return redirect(url_for('auth.login'))
 
-        login_user(user, remember=form.remember.data) # Odczytanie stanu checkboxa "zapamiętaj mnie"
-
+        login_user(user, remember=form.remember.data)
         next_page = request.args.get('next')
         return redirect(next_page or url_for('main.dashboard'))
 
@@ -111,7 +102,7 @@ def reset_request():
     if current_user.is_authenticated:
         return redirect(url_for('main.dashboard'))
 
-    form = ResetRequestForm() # Używamy klasy formularza
+    form = ResetRequestForm()
 
     if form.validate_on_submit():
         user = User.query.filter_by(email=form.email.data).first()
@@ -119,19 +110,19 @@ def reset_request():
             token = user.get_reset_token()
             reset_url = url_for('auth.reset_token', token=token, _external=True)
 
-            # --- POPRAWKA: Używamy rq.get_queue().enqueue ---
             try:
-                rq.get_queue().enqueue(
-                    send_email_in_background,
-                    user.email,
-                    'Resetowanie hasła - Grafik',
-                    'email/reset_password',
-                    user=user,
-                    reset_url=reset_url
-                )
+                # --- POPRAWKA: Cały blok RQ został wyłączony ---
+                # rq.get_queue().enqueue(
+                #    send_email_in_background,
+                #    user.email,
+                #    'Resetowanie hasła - Grafik',
+                #    'email/reset_password',
+                #    user=user,
+                #    reset_url=reset_url
+                # )
+                pass # Tymczasowo pomijamy wysyłkę e-maila
             except Exception as e:
                 current_app.logger.error(f"Nie udało się zakolejkować e-maila resetującego hasło: {e}")
-                # Nadal pokazujemy komunikat sukcesu, aby nie ujawniać istnienia konta
                 flash('Jeśli konto istnieje, wysłano instrukcję resetowania hasła (problem z wysyłką).', 'warning')
                 return redirect(url_for('auth.login'))
 
@@ -151,7 +142,7 @@ def reset_token(token):
         flash('Link do resetowania hasła jest nieprawidłowy lub wygasł.', 'error')
         return redirect(url_for('auth.reset_request'))
 
-    form = ResetPasswordForm() # Używamy klasy formularza
+    form = ResetPasswordForm()
 
     if form.validate_on_submit():
         try:
@@ -161,9 +152,9 @@ def reset_token(token):
             return redirect(url_for('auth.login'))
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f"Błąd podczas zmiany hasła po resecie: {e}") # <-- Poprawiono NameError
+            current_app.logger.error(f"Błąd podczas zmiany hasła po resecie: {e}")
             flash(f'Wystąpił błąd podczas zmiany hasła: {e}', 'error')
-            # Ponowne renderowanie formularza z tokenem, aby użytkownik mógł spróbować ponownie
             return render_template('reset_token.html', form=form, token=token)
 
     return render_template('reset_token.html', form=form, token=token)
+

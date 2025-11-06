@@ -1,9 +1,10 @@
 import os
 import logging
-from logging.handlers import RotatingFileHandler
+# Usunięto 'RotatingFileHandler', ponieważ nie można pisać do plików w chmurze
 from flask import Flask, render_template, request, current_app
 from config import Config, TestConfig
-from extensions import db, login_manager, mail, csrf, rq, migrate
+# --- POPRAWKA: Usunięto 'rq' z importu, aby wyłączyć Redisa ---
+from extensions import db, login_manager, mail, csrf, migrate
 from utils import nl2br_filter, inject_current_year, url_for_static_bust # Wszystkie funkcje pomocnicze
 from routes.auth import auth_bp
 from routes.main import main_bp
@@ -28,7 +29,8 @@ def create_app(config_class=Config):
     login_manager.init_app(app)
     mail.init_app(app)
     csrf.init_app(app)
-    rq.init_app(app)
+    # --- POPRAWKA: Wyłączono RQ/Redis ---
+    # rq.init_app(app)
     migrate.init_app(app, db) # Potrzebne do migracji bazy danych
 
     # --- 2. REJESTRACJA FUNKCJI W JINJA ---
@@ -58,25 +60,21 @@ def create_app(config_class=Config):
         # Używamy db.session.get (nowa metoda) zamiast query.get
         return db.session.get(User, int(user_id))
 
-    # --- 5. LOGOWANIE DO PLIKU (AUDYT 3.3) ---
+    # --- 5. POPRAWKA LOGOWANIA DLA CHMURY (Cloud Run / Render) ---
+    # Usunęliśmy logowanie do pliku, które powodowało awarię
+    # na systemie plików "tylko do odczytu".
+    # Zamiast tego, wysyłamy logi do stdout, a Google/Render je przechwyci.
     if not app.debug and not app.testing:
-        if not os.path.exists('logs'):
-            os.mkdir('logs')
-        
-        # Ustawia logowanie błędów do pliku logs/grafik.log (z rotacją)
-        file_handler = RotatingFileHandler('logs/grafik.log', maxBytes=10240, backupCount=10)
-        file_handler.setFormatter(logging.Formatter(
-            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
-        ))
-        file_handler.setLevel(logging.INFO)
-        app.logger.addHandler(file_handler)
+        # Ustawiamy poziom logowania
         app.logger.setLevel(logging.INFO)
-        app.logger.info('Grafik startup')
+        # Ten log zobaczysz w panelu Google/Render po pomyślnym starcie
+        app.logger.info('Grafik startup (Cloud Run / Render)')
 
     # --- 6. HANDLERY BŁĘDÓW (AUDYT 3.2) ---
     # Logowanie błędów 404 dla informacji
     @app.errorhandler(404)
     def not_found_error(error):
+        # Logowanie błędów 404 nadal działa i jest wysyłane do stdout
         app.logger.info(f"Strona nie znaleziona: {request.path} (404)")
         return render_template('404.html'), 404
 
@@ -84,14 +82,13 @@ def create_app(config_class=Config):
     @app.errorhandler(500)
     def internal_error(error):
         db.session.rollback() # Zawsze cofnij transakcję bazy danych
+        # Logowanie błędów 500 nadal działa i jest wysyłane do stdout
         app.logger.error(f"BŁĄD SERWERA 500: {error}")
         return render_template('500.html'), 500
 
     return app
 
-# --- PLIK URUCHOMIENIOWY (WYŁĄCZNIE DLA PROCESU WSGI LUB LOKALNEGO DEBUGOWANIA) ---
-# Wersja produkcyjna jest uruchamiana przez Gunicorn, np. 'gunicorn run:app'
-if __name__ == '__main__':
-    # Ta sekcja zostanie usunięta na produkcji (Audyt 2.4)
-    app = create_app()
-    app.run(debug=True, host='0.0.0.0', port=5001)
+# --- KONIEC PLIKU ---
+# Usunięto blok 'if __name__ == "__main__":', ponieważ jest on
+# przeznaczony tylko do testów lokalnych. Serwer Gunicorn go nie używa.
+
