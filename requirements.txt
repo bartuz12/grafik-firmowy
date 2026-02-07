@@ -24,3 +24,7 @@ gunicorn==22.0.0
 
 python-dotenv==1.0.1
 pandas
+
+#maile
+
+email-validator
